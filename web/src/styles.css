@@ -159,3 +159,5 @@ tr:last-child td { border-bottom: 0; }
 .login .card { max-width: 420px; display: grid; gap: 14px; text-align: center; justify-items: center; padding: 32px; }
 .login .brand-mark { width: 48px; height: 48px; border-radius: 12px; }
 .creds { font-size: 12.5px; background: var(--surface-2); border-radius: 8px; padding: 8px 12px; text-align: left; width: 100%; }
+.md-table { margin: 6px 0; font-size: 13px; }
+.md-table th, .md-table td { padding: 5px 10px; }

@@ -5,6 +5,29 @@ export function renderMarkdown(text: string, onCite?: (tag: string) => void): Re
   const blocks = text.split(/\n{2,}/);
   return blocks.map((block, i) => {
     const lines = block.split("\n");
+    if (lines.length >= 2 && lines.every((l) => l.trim().startsWith("|")) && /^\s*\|[\s:|-]+\|\s*$/.test(lines[1] ?? "")) {
+      const cells = (l: string) => l.trim().replace(/^\||\|$/g, "").split("|").map((c) => c.trim());
+      return (
+        <table key={i} className="md-table">
+          <thead>
+            <tr>
+              {cells(lines[0] ?? "").map((c, j) => (
+                <th key={j}>{inline(c, onCite)}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {lines.slice(2).map((l, r) => (
+              <tr key={r}>
+                {cells(l).map((c, j) => (
+                  <td key={j}>{inline(c, onCite)}</td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      );
+    }
     if (lines.every((l) => /^\s*[-*]\s+/.test(l))) {
       return (
         <ul key={i}>

@@ -34,7 +34,7 @@ describe("provider rate-limit handling", () => {
     const res = await wrapped.bindTools([]).invoke([]);
     expect(res.content).toBe("ok");
     expect(calls()).toBe(3);
-    expect(waits).toEqual([2250, 2250]);
+    expect(waits).toEqual([4000, 8000]); // provider said 2.25 s, back-off raises it
   });
 
   it("gives up when the wait is too long or the error is something else", async () => {

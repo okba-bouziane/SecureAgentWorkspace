@@ -46,8 +46,9 @@ export function withRateLimitRetry(model: ChatModelLike, maxWaitMs = 50_000, sle
               return await bound.invoke(messages);
             } catch (err) {
               const wait = retryDelayMs(err instanceof Error ? err.message : String(err));
-              if (wait === null || wait > maxWaitMs || attempt >= 4) throw err;
-              await sleep(wait);
+              if (wait === null || wait > maxWaitMs || attempt >= 6) throw err;
+              // Providers under-report the wait when other requests share the window, so back off at least a little more each time.
+              await sleep(Math.max(wait, 4000 * (attempt + 1)));
             }
           }
         },
