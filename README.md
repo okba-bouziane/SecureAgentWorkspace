@@ -159,6 +159,7 @@ For Ollama, point `LLM_BASE_URL` at `http://host.docker.internal:11434/v1` and p
 | `MCP_URL` | `http://localhost:3102/mcp` | SecureMCP endpoint |
 | `EMBEDDING_MODEL` | `Xenova/all-MiniLM-L6-v2` | 384-dimension model (schema is fixed at 384) |
 | `CHAT_RATE_LIMIT`, `CHAT_RATE_WINDOW_SECONDS` | `20`, `60` | per-user chat limit |
+| `DAILY_RUN_CAP_GLOBAL`, `DAILY_RUN_CAP_PER_USER` | `0`, `0` (off) | daily caps on agent runs |
 | `INGEST_ATTEMPTS`, `INGEST_BACKOFF_MS`, `INGEST_CONCURRENCY` | `3`, `2000`, `2` | queue behaviour |
 | `SEED_ON_START`, `SEED_DIR` | `false`, `./seed` | queue the sample documents on API start |
 | `MAX_AGENT_STEPS` | `6` | LLM calls per user message |
@@ -211,6 +212,17 @@ These datasets are small and written by the author for this sample shop. They gu
 | `GET /knowledge/search` (embed + full-text + vector + RRF + rerank) | 74 | 233 ms | 618 ms | 1178 ms | 0 |
 
 Hybrid search is CPU-bound by the in-process embedding model: one Node process embeds one query at a time. That is why the API deployment has an HPA, and why a production setup would move embedding to a separate service or batch it. `k6` was not installed on the machine that produced these numbers, so `k6.js` has not been run.
+
+## All-in-one image (single container)
+
+`deploy/huggingface/` builds one image with Postgres + pgvector, Redis, Keycloak (behind nginx at `/auth`), SecureMCP, the API, the worker and the web app on one origin, port 7860, started by supervisord. It clones the sources from GitHub at build time. There is no public live demo at the moment: Hugging Face Docker Spaces were not available on the free tier when this was tried, so the image has only been built and run locally.
+
+```bash
+docker build -t saw-allinone --build-arg PUBLIC_URL=http://localhost:7860 deploy/huggingface
+docker run -p 7860:7860 -e PUBLIC_URL=http://localhost:7860 -e LLM_API_KEY=... -e LLM_MODEL=openai/gpt-oss-20b saw-allinone
+```
+
+For a public demo it adds `DAILY_RUN_CAP_GLOBAL` and `DAILY_RUN_CAP_PER_USER` (Redis counters, reset at 00:00 UTC) next to the per-minute limit, with a friendly 429 message in the UI.
 
 ## Kubernetes
 

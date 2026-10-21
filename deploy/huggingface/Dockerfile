@@ -38,7 +38,7 @@ RUN apt-get update \
  && apt-get install -y --no-install-recommends nginx redis-server supervisor curl ca-certificates procps \
  && rm -rf /var/lib/apt/lists/* \
  && useradd -m -u 1000 user \
- && mkdir -p /data /app /tmp/nginx && chown -R user:user /data /app
+ && mkdir -p /data /app /tmp/nginx && chown -R user:user /data /app /tmp/nginx
 
 COPY --from=node:22-slim /usr/local/bin/node /usr/local/bin/node
 COPY --from=eclipse-temurin:21-jre-jammy /opt/java/openjdk /opt/java
