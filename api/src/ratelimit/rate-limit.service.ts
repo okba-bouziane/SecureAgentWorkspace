@@ -30,6 +30,15 @@ redis.call('PEXPIRE', key, windowMs)
 return {1, count + 1, 0}
 `;
 
+export interface DailyDecision {
+  allowed: boolean;
+  scope?: "global" | "user";
+  retryAfterSeconds: number;
+}
+
+const secondsUntilUtcMidnight = (now = new Date()) =>
+  Math.max(1, Math.ceil((Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1) - now.getTime()) / 1000));
+
 @Injectable()
 export class RateLimitService {
   private seq = 0;
@@ -51,5 +60,35 @@ export class RateLimitService {
       remaining: Math.max(limit - count, 0),
       retryAfterSeconds: Math.ceil(retryMs / 1000),
     };
+  }
+
+  /**
+   * Daily caps (UTC day) per user and across all users. Counts agent runs, so a public demo
+   * cannot burn a shared LLM quota. A run refused by one cap is not counted against the other.
+   */
+  async checkDaily(userSub: string): Promise<DailyDecision> {
+    const perUser = this.cfg.DAILY_RUN_CAP_PER_USER;
+    const global = this.cfg.DAILY_RUN_CAP_GLOBAL;
+    const retryAfterSeconds = secondsUntilUtcMidnight();
+    if (perUser <= 0 && global <= 0) return { allowed: true, retryAfterSeconds };
+    const day = new Date().toISOString().slice(0, 10);
+    const ttl = 2 * 24 * 3600;
+    const bump = async (key: string) => {
+      const n = await this.redis.incr(key);
+      if (n === 1) await this.redis.expire(key, ttl);
+      return n;
+    };
+    const userKey = `saw:cap:${day}:user:${userSub}`;
+    const globalKey = `saw:cap:${day}:global`;
+    if (perUser > 0 && (await bump(userKey)) > perUser) {
+      await this.redis.decr(userKey);
+      return { allowed: false, scope: "user", retryAfterSeconds };
+    }
+    if (global > 0 && (await bump(globalKey)) > global) {
+      await this.redis.decr(globalKey);
+      if (perUser > 0) await this.redis.decr(userKey);
+      return { allowed: false, scope: "global", retryAfterSeconds };
+    }
+    return { allowed: true, retryAfterSeconds };
   }
 }

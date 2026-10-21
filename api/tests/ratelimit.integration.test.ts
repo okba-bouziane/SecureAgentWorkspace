@@ -40,4 +40,27 @@ describe.skipIf(!TEST_REDIS_URL)("Redis rate limiter", () => {
     await new Promise((r) => setTimeout(r, 1100));
     expect((await limiter.check(user)).allowed).toBe(true);
   });
+
+  it("enforces a per-user and a global daily cap, and a refusal by one does not use up the other", async () => {
+    const tag = `d${Date.now()}`;
+    const cfg = { ...loadConfig({}), DAILY_RUN_CAP_PER_USER: 2, DAILY_RUN_CAP_GLOBAL: 3 };
+    const a = `${tag}-a`;
+    const b = `${tag}-b`;
+    // The global counter is shared with other tests only through today's key, so measure relative to it.
+    const before = Number((await redis.get(`saw:cap:${new Date().toISOString().slice(0, 10)}:global`)) ?? 0);
+    const cap = { ...cfg, DAILY_RUN_CAP_GLOBAL: before + 3 };
+    const l = new RateLimitService(redis, cap);
+    expect((await l.checkDaily(a)).allowed).toBe(true);
+    expect((await l.checkDaily(a)).allowed).toBe(true);
+    const third = await l.checkDaily(a);
+    expect(third).toMatchObject({ allowed: false, scope: "user" });
+    expect(third.retryAfterSeconds).toBeGreaterThan(0);
+    expect((await l.checkDaily(b)).allowed).toBe(true); // global is now at before+3
+    expect(await l.checkDaily(`${tag}-c`)).toMatchObject({ allowed: false, scope: "global" });
+  });
+
+  it("is off when both caps are 0", async () => {
+    const limiter = new RateLimitService(redis, { ...loadConfig({}), DAILY_RUN_CAP_PER_USER: 0, DAILY_RUN_CAP_GLOBAL: 0 });
+    for (let i = 0; i < 5; i++) expect((await limiter.checkDaily("free")).allowed).toBe(true);
+  });
 });

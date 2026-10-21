@@ -30,7 +30,7 @@ export default function App() {
             Sign in with Keycloak
           </button>
           <div className="creds">
-            <b>Sample users</b> (local demo realm): <code>viewer</code> / <code>viewer</code> reads only, <code>admin</code> / <code>admin</code> can also change orders.
+            <b>Sample accounts</b> (demo realm, not real credentials): <code>viewer</code> / <code>viewer</code> can read orders, <code>admin</code> / <code>admin</code> can also change orders and add documents.
           </div>
         </div>
       </div>

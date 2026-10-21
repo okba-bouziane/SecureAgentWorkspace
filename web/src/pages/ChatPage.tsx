@@ -69,7 +69,7 @@ export default function ChatPage({ session }: { session: Session }) {
     try {
       await postStream(path, body, (e: AgentEvent) => update((t) => applyEvent(t, e)));
     } catch (e) {
-      if (e instanceof ApiError && e.status === 429) setBanner(`Rate limit reached. Try again in ${e.retryAfter ?? "a few"} seconds.`);
+      if (e instanceof ApiError && e.status === 429) setBanner(e.message);
       else setBanner(e instanceof Error ? e.message : "Request failed");
       update((t) => ({ ...t, running: false }));
     } finally {

@@ -35,6 +35,10 @@ const schema = z.object({
   CHAT_RATE_LIMIT: z.coerce.number().int().default(20),
   CHAT_RATE_WINDOW_SECONDS: z.coerce.number().int().default(60),
 
+  /** Daily caps on agent runs (0 = off). Protects a shared free LLM quota on public demos. */
+  DAILY_RUN_CAP_GLOBAL: z.coerce.number().int().default(0),
+  DAILY_RUN_CAP_PER_USER: z.coerce.number().int().default(0),
+
   INGEST_ATTEMPTS: z.coerce.number().int().default(3),
   INGEST_BACKOFF_MS: z.coerce.number().int().default(2000),
   INGEST_CONCURRENCY: z.coerce.number().int().default(2),
