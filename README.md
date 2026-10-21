@@ -4,6 +4,10 @@ A production-style agentic full-stack app. A React UI signs users in with Keyclo
 
 **Stack:** React + Vite + TypeScript · NestJS · LangGraph.js (Postgres checkpointer) · MCP client (Streamable HTTP) · Postgres + pgvector · Redis + BullMQ · Keycloak · local embeddings (`@huggingface/transformers`) · Prometheus · Docker Compose · Kubernetes manifests · Vitest
 
+![Demo](docs/demo.gif)
+
+[Watch the 75 second demo as MP4](docs/demo.mp4): viewer read question, knowledge question with citations, a viewer write that is approved but refused by SecureMCP, the same write as admin, and the trace viewer. It runs locally with one command (`docker compose up --build`); there is no public demo.
+
 > All data in the demo is **sample data** for a fictional shop. The seed documents say so, and the orders come from SecureMCP's sample database.
 
 | | |
