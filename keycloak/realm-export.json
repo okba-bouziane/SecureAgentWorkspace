@@ -1,0 +1,72 @@
+{
+  "realm": "securemcp",
+  "displayName": "Secure Agent Workspace (sample realm)",
+  "enabled": true,
+  "sslRequired": "external",
+  "accessTokenLifespan": 1800,
+  "ssoSessionIdleTimeout": 28800,
+  "registrationAllowed": false,
+  "bruteForceProtected": true,
+  "roles": {
+    "realm": [
+      { "name": "viewer", "description": "Read-only access to orders" },
+      { "name": "admin", "description": "Full access to orders, the audit log and document uploads" }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "saw-web",
+      "name": "Secure Agent Workspace (SPA)",
+      "description": "Public single-page-app client. Authorization Code with PKCE; no client secret.",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": true,
+      "serviceAccountsEnabled": false,
+      "rootUrl": "http://localhost:5173",
+      "redirectUris": ["http://localhost:5173/*", "http://127.0.0.1:5173/*"],
+      "webOrigins": ["http://localhost:5173", "http://127.0.0.1:5173"],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "http://localhost:5173/*"
+      },
+      "protocolMappers": [
+        {
+          "name": "mcp-server-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.custom.audience": "mcp-server",
+            "id.token.claim": "false",
+            "access.token.claim": "true",
+            "introspection.token.claim": "true"
+          }
+        }
+      ]
+    }
+  ],
+  "users": [
+    {
+      "username": "viewer",
+      "enabled": true,
+      "email": "viewer@example.test",
+      "emailVerified": true,
+      "firstName": "Vera",
+      "lastName": "Viewer",
+      "credentials": [{ "type": "password", "value": "viewer", "temporary": false }],
+      "realmRoles": ["viewer", "default-roles-securemcp"]
+    },
+    {
+      "username": "admin",
+      "enabled": true,
+      "email": "admin@example.test",
+      "emailVerified": true,
+      "firstName": "Ada",
+      "lastName": "Admin",
+      "credentials": [{ "type": "password", "value": "admin", "temporary": false }],
+      "realmRoles": ["admin", "default-roles-securemcp"]
+    }
+  ]
+}
