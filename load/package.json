@@ -1,0 +1,13 @@
+{
+  "name": "@saw/load",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "autocannon": "node autocannon.mjs"
+  },
+  "dependencies": {
+    "autocannon": "8.0.0"
+  }
+}

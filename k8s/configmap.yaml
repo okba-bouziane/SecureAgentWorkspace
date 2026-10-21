@@ -1,0 +1,23 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: saw-config
+  labels: { app.kubernetes.io/part-of: secure-agent-workspace }
+data:
+  PORT: "3001"
+  WEB_ORIGIN: "https://workspace.example.test"
+  # Postgres (pgvector) lives in the secret (DATABASE_URL). Redis is expected as a managed service; replace the host.
+  REDIS_URL: "redis://redis.example.internal:6379"
+  OIDC_ISSUER: "https://keycloak.example.test/realms/securemcp"
+  OIDC_JWKS_URL: "http://keycloak.keycloak.svc.cluster.local:8080/realms/securemcp/protocol/openid-connect/certs"
+  OIDC_AUDIENCE: "mcp-server"
+  MCP_URL: "http://securemcp.default.svc.cluster.local:3000/mcp"
+  LLM_BASE_URL: "https://api.groq.com/openai/v1"
+  LLM_MODEL: "openai/gpt-oss-120b"
+  LLM_REASONING_EFFORT: "low"
+  CHAT_RATE_LIMIT: "20"
+  CHAT_RATE_WINDOW_SECONDS: "60"
+  INGEST_ATTEMPTS: "3"
+  INGEST_BACKOFF_MS: "2000"
+  INGEST_CONCURRENCY: "2"
+  HF_CACHE_DIR: "/models"

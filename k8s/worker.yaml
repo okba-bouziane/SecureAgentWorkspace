@@ -1,0 +1,35 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: saw-worker
+  labels: { app: saw-worker, app.kubernetes.io/part-of: secure-agent-workspace }
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: saw-worker }
+  template:
+    metadata:
+      labels: { app: saw-worker }
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9101"
+        prometheus.io/path: /metrics
+    spec:
+      # The worker finishes the jobs it is running on SIGTERM, then exits.
+      terminationGracePeriodSeconds: 40
+      containers:
+        - name: worker
+          image: saw-api:1.0.0
+          command: ["node", "dist/worker.js"]
+          ports:
+            - { name: metrics, containerPort: 9101 }
+          envFrom:
+            - configMapRef: { name: saw-config }
+            - secretRef: { name: saw-secrets }
+          resources:
+            requests: { cpu: 500m, memory: 1Gi }
+            limits: { cpu: "2", memory: 2Gi }
+          livenessProbe:
+            httpGet: { path: /, port: metrics }
+            initialDelaySeconds: 30
+            periodSeconds: 15
