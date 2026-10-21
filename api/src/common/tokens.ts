@@ -1,0 +1,11 @@
+export const CONFIG = Symbol("CONFIG");
+export const PG_POOL = Symbol("PG_POOL");
+export const REDIS = Symbol("REDIS");
+export const JWT_VERIFIER = Symbol("JWT_VERIFIER");
+export const MCP_GATEWAY_FACTORY = Symbol("MCP_GATEWAY_FACTORY");
+export const CHAT_MODEL_FACTORY = Symbol("CHAT_MODEL_FACTORY");
+export const CHECKPOINTER = Symbol("CHECKPOINTER");
+export const INGEST_QUEUE = Symbol("INGEST_QUEUE");
+export const INGEST_DLQ = Symbol("INGEST_DLQ");
+export const TRACER = Symbol("TRACER");
+export const EMBEDDER = Symbol("EMBEDDER");
