@@ -19,7 +19,21 @@ mkdirSync(DOCS, { recursive: true });
 const tmp = mkdtempSync(join(tmpdir(), "saw-demo-"));
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-const browser = await puppeteer.launch({ executablePath: CHROME, headless: "new", args: ["--no-sandbox"], protocolTimeout: 300000, defaultViewport: { width: 1280, height: 760, deviceScaleFactor: 1 } });
+// HEADLESS=0 opens visible windows that fill the screen (maximized) and records at that size.
+const VISIBLE = process.env.HEADLESS === "0";
+const browser = await puppeteer.launch({ executablePath: CHROME, headless: VISIBLE ? false : "new", args: ["--no-sandbox", ...(VISIBLE ? ["--start-maximized", "--window-position=0,0", "--window-size=1512,982"] : [])], protocolTimeout: 300000, defaultViewport: VISIBLE ? null : { width: 1280, height: 760, deviceScaleFactor: 1 } });
+const [MAX_W, MAX_H] = VISIBLE ? [1512, 982] : [1280, 760];
+
+async function newPage(ctx) {
+  const page = await ctx.newPage();
+  if (VISIBLE) {
+    const cdp = await page.createCDPSession();
+    const { windowId } = await cdp.send("Browser.getWindowForTarget");
+    await cdp.send("Browser.setWindowBounds", { windowId, bounds: { windowState: "maximized" } });
+    await sleep(1500);
+  }
+  return page;
+}
 const clips = [];
 
 async function caption(page, text) {
@@ -51,7 +65,7 @@ async function clip(page, name, fn) {
     mine.push({ buf: Buffer.from(f.data, "base64"), t: Date.now() });
     client.send("Page.screencastFrameAck", { sessionId: f.sessionId }).catch(() => undefined);
   });
-  await client.send("Page.startScreencast", { format: "jpeg", quality: 80, maxWidth: 1280, maxHeight: 760, everyNthFrame: 1 });
+  await client.send("Page.startScreencast", { format: "jpeg", quality: 80, maxWidth: MAX_W, maxHeight: MAX_H, everyNthFrame: 1 });
   try {
     await fn();
   } finally {
@@ -98,7 +112,7 @@ const newChat = async (page) => {
 // Viewer
 {
   const ctx = await browser.createBrowserContext();
-  const page = await ctx.newPage();
+  const page = await newPage(ctx);
   await page.emulateMediaFeatures([{ name: "prefers-color-scheme", value: "light" }]);
   await clip(page, "1-viewer-read", async () => {
     await page.goto(BASE, { waitUntil: "networkidle0" });
@@ -136,7 +150,7 @@ const newChat = async (page) => {
 {
   await sleep(PACE_MS);
   const ctx = await browser.createBrowserContext();
-  const page = await ctx.newPage();
+  const page = await newPage(ctx);
   await page.emulateMediaFeatures([{ name: "prefers-color-scheme", value: "light" }]);
   await clip(page, "4-admin-write", async () => {
     await caption(page, "Now as admin");
@@ -169,6 +183,6 @@ lines.push(`file '${join(tmp, `f${String(frames.length - 1).padStart(5, "0")}.jp
 const list = join(tmp, "list.txt");
 wf(list, lines.join("\n"));
 const mp4 = join(DOCS, "demo.mp4");
-execFileSync(FFMPEG, ["-y", "-f", "concat", "-safe", "0", "-i", list, "-vf", "fps=15,scale=1280:-2,format=yuv420p", "-c:v", "libx264", "-crf", "29", "-preset", "slow", "-movflags", "+faststart", "-an", mp4], { stdio: "ignore" });
+execFileSync(FFMPEG, ["-y", "-f", "concat", "-safe", "0", "-i", list, "-vf", "fps=15,scale=" + MAX_W + ":-2,format=yuv420p", "-c:v", "libx264", "-crf", "29", "-preset", "slow", "-movflags", "+faststart", "-an", mp4], { stdio: "ignore" });
 execFileSync(FFMPEG, ["-y", "-i", mp4, "-vf", "fps=9,scale=900:-1:flags=lanczos,split[a][b];[a]palettegen=max_colors=96[p];[b][p]paletteuse=dither=bayer:bayer_scale=4", join(DOCS, "demo.gif")], { stdio: "ignore" });
 console.log("done");
