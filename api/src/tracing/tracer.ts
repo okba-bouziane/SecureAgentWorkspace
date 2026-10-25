@@ -2,6 +2,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { randomBytes } from "node:crypto";
 import { estimateCostUsd, type Pricing } from "./cost.js";
 import type { SpanKind, SpanRecord, SpanSink, TraceRecord } from "./types.js";
+import { errorMessage } from "../common/errors.js";
 
 interface Ctx {
   traceId: string;
@@ -78,7 +79,7 @@ export class Tracer {
       return await this.als.run(ctx, () => fn(handle));
     } catch (err) {
       status = "error";
-      attributes.error = err instanceof Error ? err.message : String(err);
+      attributes.error = errorMessage(err);
       throw err;
     } finally {
       const record: SpanRecord = {

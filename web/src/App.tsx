@@ -1,16 +1,29 @@
-import { BookOpenText, Activity, LogOut, MessagesSquare, Moon, ShieldCheck, Sun } from "lucide-react";
+import { Activity, BookOpenText, LogOut, MessagesSquare, Moon, ShieldCheck, Sun } from "lucide-react";
 import { NavLink, Navigate, Route, Routes } from "react-router-dom";
+import { Banner, Loading } from "./components/ui";
 import { useAuth } from "./lib/auth";
 import { useTheme } from "./lib/theme";
 import ChatPage from "./pages/ChatPage";
 import KnowledgePage from "./pages/KnowledgePage";
 import TracesPage from "./pages/TracesPage";
 
+const NAV_ITEMS = [
+  { to: "/chat", label: "Chat", Icon: MessagesSquare },
+  { to: "/knowledge", label: "Knowledge", Icon: BookOpenText },
+  { to: "/traces", label: "Traces", Icon: Activity },
+];
+
 export default function App() {
   const { session, loading, error, login, logout } = useAuth();
   const [theme, toggleTheme] = useTheme();
 
-  if (loading) return <div className="login muted">Signing in...</div>;
+  if (loading) {
+    return (
+      <div className="login">
+        <Loading label="Signing in" />
+      </div>
+    );
+  }
 
   if (!session) {
     return (
@@ -21,12 +34,12 @@ export default function App() {
           </div>
           <div>
             <h1>Secure Agent Workspace</h1>
-            <p className="muted" style={{ margin: "6px 0 0" }}>
+            <p className="muted login-lead">
               An agent that acts with your own permissions. Sign in with Keycloak to continue.
             </p>
           </div>
-          {error && <div className="banner err">{error}</div>}
-          <button className="btn primary" onClick={login}>
+          {error && <Banner kind="err">{error}</Banner>}
+          <button className="btn primary block" onClick={login}>
             Sign in with Keycloak
           </button>
           <div className="creds">
@@ -46,31 +59,27 @@ export default function App() {
           </div>
           <span>Agent Workspace</span>
         </div>
-        <nav className="nav">
-          <NavLink to="/chat">
-            <MessagesSquare size={17} /> <span className="label">Chat</span>
-          </NavLink>
-          <NavLink to="/knowledge">
-            <BookOpenText size={17} /> <span className="label">Knowledge</span>
-          </NavLink>
-          <NavLink to="/traces">
-            <Activity size={17} /> <span className="label">Traces</span>
-          </NavLink>
+        <nav className="nav" aria-label="Main">
+          {NAV_ITEMS.map(({ to, label, Icon }) => (
+            <NavLink key={to} to={to} title={label}>
+              <Icon size={17} aria-hidden /> <span className="label">{label}</span>
+            </NavLink>
+          ))}
         </nav>
         <div className="spacer" />
         <div className="userbox">
           <div className="userline">
-            <b>{session.username}</b>
+            <b className="username">{session.username}</b>
             {session.roles.map((r) => (
               <span key={r} className={`badge ${r === "admin" ? "accent" : ""}`}>
                 {r}
               </span>
             ))}
           </div>
-          <button className="btn sm" onClick={toggleTheme} aria-label="Toggle theme">
+          <button className="btn sm" onClick={toggleTheme} title="Toggle theme">
             {theme === "dark" ? <Sun size={14} /> : <Moon size={14} />} <span className="label">{theme === "dark" ? "Light" : "Dark"} mode</span>
           </button>
-          <button className="btn sm" onClick={logout}>
+          <button className="btn sm" onClick={logout} title="Sign out">
             <LogOut size={14} /> <span className="label">Sign out</span>
           </button>
         </div>

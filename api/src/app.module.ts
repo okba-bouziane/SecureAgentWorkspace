@@ -4,6 +4,7 @@ import { PostgresSaver } from "@langchain/langgraph-checkpoint-postgres";
 import { AgentService } from "./agent/agent.service.js";
 import { ChatController } from "./agent/chat.controller.js";
 import { openAiCompatibleFactory } from "./agent/llm.js";
+import { ThreadStore } from "./agent/threads.js";
 import { AuthModule } from "./auth/auth.module.js";
 import { CHAT_MODEL_FACTORY, CHECKPOINTER, CONFIG, MCP_GATEWAY_FACTORY } from "./common/tokens.js";
 import type { Config } from "./config.js";
@@ -46,6 +47,7 @@ class CheckpointerShutdown implements OnApplicationShutdown {
     { provide: MCP_GATEWAY_FACTORY, inject: [CONFIG], useFactory: (cfg: Config) => httpGatewayFactory(cfg.MCP_URL) },
     { provide: APP_INTERCEPTOR, useExisting: HttpMetricsInterceptor },
     CheckpointerShutdown,
+    ThreadStore,
     AgentService,
     RagService,
     IngestionService,

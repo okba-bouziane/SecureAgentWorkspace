@@ -3,6 +3,7 @@ import { AuthGuard, CurrentUser } from "../auth/auth.guard.js";
 import type { AuthUser } from "../auth/jwt-verifier.js";
 import { PG_POOL } from "../common/tokens.js";
 import type { Pool } from "../db/db.js";
+import { isAdmin } from "../auth/roles.js";
 
 @Controller("traces")
 @UseGuards(AuthGuard)
@@ -13,7 +14,7 @@ export class TracingController {
   @Get()
   async list(@CurrentUser() user: AuthUser, @Query("limit") limit?: string) {
     const n = Math.min(Math.max(Number(limit) || 30, 1), 100);
-    const all = user.roles.includes("admin");
+    const all = isAdmin(user);
     const { rows } = await this.pool.query(
       `SELECT t.id, t.username, t.thread_id AS "threadId", t.name, t.status, t.started_at AS "startedAt",
               t.duration_ms AS "durationMs",
@@ -38,7 +39,7 @@ export class TracingController {
     );
     const row = trace.rows[0];
     if (!row) throw new NotFoundException("Trace not found");
-    if (row.userSub !== user.sub && !user.roles.includes("admin")) throw new ForbiddenException();
+    if (row.userSub !== user.sub && !isAdmin(user)) throw new ForbiddenException();
     const spans = await this.pool.query(
       `SELECT id, parent_id AS "parentId", name, kind, status, started_at AS "startedAt",
               duration_ms AS "durationMs", attributes, input_tokens AS "inputTokens",

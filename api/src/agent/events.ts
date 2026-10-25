@@ -1,3 +1,6 @@
+/** Longest tool result preview sent to the browser. */
+export const PREVIEW_LIMIT = 1500;
+
 export interface SourceRef {
   tag: string;
   chunkId: number;

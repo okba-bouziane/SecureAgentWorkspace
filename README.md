@@ -167,6 +167,7 @@ For Ollama, point `LLM_BASE_URL` at `http://host.docker.internal:11434/v1` and p
 | `INGEST_ATTEMPTS`, `INGEST_BACKOFF_MS`, `INGEST_CONCURRENCY` | `3`, `2000`, `2` | queue behaviour |
 | `SEED_ON_START`, `SEED_DIR` | `false`, `./seed` | queue the sample documents on API start |
 | `MAX_AGENT_STEPS` | `6` | LLM calls per user message |
+| `WORKER_METRICS_PORT` | `9101` | port of the worker's `/metrics` and probe endpoint |
 | `LANGFUSE_HOST`, `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY` | empty | optional Langfuse export |
 | `WEB_ORIGIN` | `http://localhost:5173` | CORS origin(s), comma separated |
 
@@ -186,7 +187,7 @@ npm run typecheck && npm run lint
 
 Without the env vars, the Postgres, Redis and SecureMCP tests are skipped and the rest still run.
 
-**Tests (82 in total, all passing in the last run).** API 78: auth (valid, expired, wrong audience/issuer, unknown key, missing header), guardrails, RRF/rerank/chunker/query building, the agent graph with a scripted fake model (read tools run directly, write tools interrupt, approve and resume, rejection, a viewer getting Forbidden, injection blocked, tool output neutralised, PII redacted, step limit, spans recorded), hybrid search on real Postgres + pgvector, BullMQ ingestion (idempotency, retry with backoff, dead-letter, re-queue), Redis rate limiter, approval surviving a restart with the Postgres checkpointer, the HTTP API (401, SSE stream, token forwarded to the tool, 409 while approval pending, thread isolation, 429 with `Retry-After`, admin-only upload, trace access) and an **end-to-end test that starts the real SecureMCP** with a local JWKS (role checks and audit log are the real ones). Web 4: stream-to-turn state and history restore.
+**Tests (90 in total, all passing in the last run).** API 80: auth (valid, expired, wrong audience/issuer, unknown key, missing header), guardrails, RRF/rerank/chunker/query building, the agent graph with a scripted fake model (read tools run directly, write tools interrupt, approve and resume, rejection, a viewer getting Forbidden, injection blocked, tool output neutralised, PII redacted, step limit, spans recorded), hybrid search on real Postgres + pgvector, BullMQ ingestion (idempotency, retry with backoff, dead-letter, re-queue), Redis rate limiter, approval surviving a restart with the Postgres checkpointer, the HTTP API (401, SSE stream, token forwarded to the tool, 409 while approval pending, thread isolation, 429 with `Retry-After`, admin-only upload, trace access) and an **end-to-end test that starts the real SecureMCP** with a local JWKS (role checks and audit log are the real ones). Web 10: stream-to-turn state and history restore, JWT claim decoding, number formatting and span-tree ordering.
 
 **Evals** (`api/evals`, run in CI with thresholds): retrieval recall@3 and MRR over 18 questions with the real embedding model and Postgres; tool-routing gate (read tools run, writes and unknown tools wait for approval); prompt-injection detection and false positives; neutralising poisoned tool output; PII redaction.
 
@@ -242,8 +243,8 @@ The manifests are validated by client dry-run only. They have not been applied t
 
 ```
 api/src/
-  auth/        JWT verification (jose + JWKS), guard
-  agent/       LangGraph graph, tools, prompt, LLM factory, chat controller (SSE)
+  auth/        JWT verification (jose + JWKS), guard, role helper
+  agent/       LangGraph graph, tools, prompt, LLM factory, thread store, history mapping, chat controller (SSE)
   rag/         chunker, embeddings, RRF, rerank, hybrid search
   ingestion/   BullMQ queue, worker, processor, dead-letter handling, seed
   guardrails/  injection patterns, untrusted-output wrapper, PII redaction
@@ -252,7 +253,7 @@ api/src/
   ratelimit/   Redis sliding window
   metrics/     Prometheus
 api/tests, api/evals, api/seed (sample documents, one deliberately poisoned)
-web/           React app
+web/           React app (pages/, components/, lib/ for API client, auth, turn state)
 keycloak/      realm export (public SPA client, audience mapper, sample users)
 k8s/  load/  scripts/screenshots.mjs  .github/workflows/ci.yml
 ```

@@ -1,8 +1,15 @@
 import { type CanActivate, type ExecutionContext, HttpException, HttpStatus, Inject, Injectable, Logger } from "@nestjs/common";
 import type { Response } from "express";
 import type { AuthedRequest } from "../auth/auth.guard.js";
+import { errorMessage } from "../common/errors.js";
 import { MetricsService } from "../metrics/metrics.service.js";
 import { RateLimitService } from "./rate-limit.service.js";
+
+const DAILY_CAP_MESSAGES = {
+  global:
+    "This demo has reached its daily limit of agent runs (it shares a free LLM quota). Please try again tomorrow (limits reset at 00:00 UTC).",
+  user: "You have used your daily agent runs on this demo. Please try again tomorrow (limits reset at 00:00 UTC).",
+} as const;
 
 /** Must run after AuthGuard: limits are per signed-in user. */
 @Injectable()
@@ -20,43 +27,48 @@ export class RateLimitGuard implements CanActivate {
     const res = http.getResponse<Response>();
     if (!req.user) return false;
 
+    await this.enforceWindowLimit(req.user.sub, res);
+    await this.enforceDailyCap(req.user.sub, res);
+    return true;
+  }
+
+  private async enforceWindowLimit(userSub: string, res: Response): Promise<void> {
     let decision;
     try {
-      decision = await this.limiter.check(req.user.sub);
+      decision = await this.limiter.check(userSub);
     } catch (err) {
       // Fail open: a Redis outage should not take chat down. The error is logged.
-      this.log.warn(`Rate limiter unavailable: ${err instanceof Error ? err.message : String(err)}`);
-      return true;
+      this.log.warn(`Rate limiter unavailable: ${errorMessage(err)}`);
+      return;
     }
     res.setHeader("X-RateLimit-Limit", decision.limit);
     res.setHeader("X-RateLimit-Remaining", decision.remaining);
-    if (!decision.allowed) {
-      this.metrics.rateLimited.inc();
-      res.setHeader("Retry-After", decision.retryAfterSeconds);
-      throw new HttpException(
-        { statusCode: 429, message: `Rate limit exceeded. Retry in ${decision.retryAfterSeconds}s.`, retryAfterSeconds: decision.retryAfterSeconds },
-        HttpStatus.TOO_MANY_REQUESTS,
-      );
-    }
+    if (decision.allowed) return;
 
+    this.metrics.rateLimited.inc();
+    res.setHeader("Retry-After", decision.retryAfterSeconds);
+    throw new HttpException(
+      { statusCode: 429, message: `Rate limit exceeded. Retry in ${decision.retryAfterSeconds}s.`, retryAfterSeconds: decision.retryAfterSeconds },
+      HttpStatus.TOO_MANY_REQUESTS,
+    );
+  }
+
+  private async enforceDailyCap(userSub: string, res: Response): Promise<void> {
+    let daily;
     try {
-      const daily = await this.limiter.checkDaily(req.user.sub);
-      if (!daily.allowed) {
-        this.metrics.rateLimited.inc();
-        res.setHeader("Retry-After", daily.retryAfterSeconds);
-        const message =
-          daily.scope === "global"
-            ? "This demo has reached its daily limit of agent runs (it shares a free LLM quota). Please try again tomorrow (limits reset at 00:00 UTC)."
-            : "You have used your daily agent runs on this demo. Please try again tomorrow (limits reset at 00:00 UTC).";
-        throw new HttpException(
-          { statusCode: 429, message, code: "daily_cap", scope: daily.scope, retryAfterSeconds: daily.retryAfterSeconds },
-          HttpStatus.TOO_MANY_REQUESTS,
-        );
-      }
+      daily = await this.limiter.checkDaily(userSub);
     } catch (err) {
-      if (err instanceof HttpException) throw err;
-      this.log.warn(`Daily cap check unavailable: ${err instanceof Error ? err.message : String(err)}`);
+      this.log.warn(`Daily cap check unavailable: ${errorMessage(err)}`);
+      return;
     }
-    return true;
+    if (daily.allowed) return;
+
+    this.metrics.rateLimited.inc();
+    res.setHeader("Retry-After", daily.retryAfterSeconds);
+    const scope = daily.scope ?? "user";
+    throw new HttpException(
+      { statusCode: 429, message: DAILY_CAP_MESSAGES[scope], code: "daily_cap", scope, retryAfterSeconds: daily.retryAfterSeconds },
+      HttpStatus.TOO_MANY_REQUESTS,
+    );
   }
 }

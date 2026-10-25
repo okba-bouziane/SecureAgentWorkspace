@@ -3,6 +3,7 @@ import { z } from "zod";
 import { AuthGuard, CurrentUser } from "../auth/auth.guard.js";
 import type { AuthUser } from "../auth/jwt-verifier.js";
 import { IngestionService } from "./ingestion.service.js";
+import { isAdmin } from "../auth/roles.js";
 
 const uploadSchema = z.object({
   title: z.string().trim().min(1).max(200),
@@ -23,7 +24,7 @@ export class IngestionController {
   /** Only admins may add to the shared knowledge base: indexed text reaches every user's agent. */
   @Post()
   async upload(@CurrentUser() user: AuthUser, @Body() body: unknown) {
-    if (!user.roles.includes("admin")) throw new ForbiddenException("Only admins can add documents");
+    if (!isAdmin(user)) throw new ForbiddenException("Only admins can add documents");
     const parsed = uploadSchema.safeParse(body);
     if (!parsed.success) throw new BadRequestException(parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; "));
     return this.ingestion.submit({ ...parsed.data, userSub: user.sub });
@@ -31,7 +32,7 @@ export class IngestionController {
 
   @Get("dead-letters")
   async deadLetters(@CurrentUser() user: AuthUser) {
-    if (!user.roles.includes("admin")) throw new ForbiddenException();
+    if (!isAdmin(user)) throw new ForbiddenException();
     return { deadLetters: await this.ingestion.deadLetters() };
   }
 }

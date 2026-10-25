@@ -2,6 +2,7 @@ import { Controller, Get, Inject, ServiceUnavailableException } from "@nestjs/co
 import type { Redis } from "ioredis";
 import { PG_POOL, REDIS } from "./common/tokens.js";
 import type { Pool } from "./db/db.js";
+import { errorMessage } from "./common/errors.js";
 
 export const lifecycle = { shuttingDown: false };
 
@@ -24,7 +25,7 @@ export class HealthController {
     try {
       await Promise.all([this.pool.query("SELECT 1"), this.redis.ping()]);
     } catch (err) {
-      throw new ServiceUnavailableException(err instanceof Error ? err.message : "dependency down");
+      throw new ServiceUnavailableException(errorMessage(err));
     }
     return { status: "ready" };
   }

@@ -2,6 +2,7 @@ import { ChatOpenAI } from "@langchain/openai";
 import type { Config } from "../config.js";
 import type { AIMessage, BaseMessage } from "@langchain/core/messages";
 import type { ChatModelLike } from "./graph.js";
+import { errorMessage } from "../common/errors.js";
 
 export type ChatModelFactory = () => ChatModelLike;
 
@@ -45,7 +46,7 @@ export function withRateLimitRetry(model: ChatModelLike, maxWaitMs = 50_000, sle
             try {
               return await bound.invoke(messages);
             } catch (err) {
-              const wait = retryDelayMs(err instanceof Error ? err.message : String(err));
+              const wait = retryDelayMs(errorMessage(err));
               if (wait === null || wait > maxWaitMs || attempt >= 6) throw err;
               // Providers under-report the wait when other requests share the window, so back off at least a little more each time.
               await sleep(Math.max(wait, 4000 * (attempt + 1)));

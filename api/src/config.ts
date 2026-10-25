@@ -50,6 +50,9 @@ const schema = z.object({
   LANGFUSE_SECRET_KEY: z.string().optional(),
 
   MAX_AGENT_STEPS: z.coerce.number().int().default(6),
+
+  /** Port of the worker's small /metrics and probe endpoint. */
+  WORKER_METRICS_PORT: z.coerce.number().int().default(9101),
 });
 
 export type Config = z.infer<typeof schema> & { jwksUrl: string };

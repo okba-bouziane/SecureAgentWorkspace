@@ -1,4 +1,5 @@
 import { AIMessage, HumanMessage, SystemMessage, ToolMessage, type BaseMessage } from "@langchain/core/messages";
+import type { ToolCall } from "@langchain/core/messages/tool";
 import {
   Annotation,
   END,
@@ -10,13 +11,14 @@ import {
   type BaseCheckpointSaver,
 } from "@langchain/langgraph";
 import { randomUUID } from "node:crypto";
+import { errorMessage } from "../common/errors.js";
 import type { GuardrailsService } from "../guardrails/guardrails.service.js";
 import type { MetricsService } from "../metrics/metrics.service.js";
 import { estimateTokens } from "../tracing/cost.js";
 import type { Tracer } from "../tracing/tracer.js";
-import type { AgentEvent, Emit, PendingCall, SourceRef } from "./events.js";
+import { PREVIEW_LIMIT, type AgentEvent, type Emit, type PendingCall, type SourceRef } from "./events.js";
 import { BLOCKED_REPLY, SYSTEM_PROMPT } from "./prompt.js";
-import { toOpenAiTools, type AgentTool } from "./tools.js";
+import { toOpenAiTools, type AgentTool, type ToolOutcome } from "./tools.js";
 
 /** What the graph needs from a chat model. Real model: ChatOpenAI. Tests: a scripted double. */
 export interface ChatModelLike {
@@ -140,70 +142,69 @@ export function buildAgentGraph(deps: GraphDeps) {
     return { rejected: decision?.approved ? [] : pending.map((p) => p.id) };
   };
 
-  const tools = async (state: State): Promise<Partial<State>> => {
-    const out: ToolMessage[] = [];
-    const sourceBatch: SourceRef[] = [];
-    for (const call of lastAi(state).tool_calls ?? []) {
-      const id = call.id as string;
-      const args = (call.args ?? {}) as Record<string, unknown>;
-      const tool = toolsByName.get(call.name);
-      emit({ type: "tool_call", id, name: call.name, args, write: isWrite(call.name) });
+  const toolErrorMessage = (call: { id: string; name: string }, text: string): ToolMessage => {
+    emit({ type: "tool_result", id: call.id, name: call.name, isError: true, preview: text, neutralised: 0, durationMs: 0 });
+    return new ToolMessage({ content: text, tool_call_id: call.id, name: call.name, status: "error" });
+  };
 
-      if (state.rejected.includes(id)) {
-        const text = "The human reviewer rejected this action. It was not executed.";
-        deps.metrics?.toolCalls.inc({ tool: call.name, outcome: "rejected" });
-        emit({ type: "tool_result", id, name: call.name, isError: true, preview: text, neutralised: 0, durationMs: 0 });
-        out.push(new ToolMessage({ content: text, tool_call_id: id, name: call.name, status: "error" }));
-        continue;
+  /** Runs one approved tool call inside a span. Tool failures become error results the model can read. */
+  const executeTool = (tool: AgentTool, args: Record<string, unknown>): Promise<ToolOutcome> =>
+    tracer.span(`tool.${tool.name}`, tool.name === "search_knowledge" ? "retrieval" : "tool", async (h) => {
+      h.setAttributes({ origin: tool.origin, write: tool.write, args });
+      try {
+        const outcome = await tool.execute(args);
+        h.setAttributes({ isError: outcome.isError });
+        return outcome;
+      } catch (err) {
+        return { text: `Tool failed: ${errorMessage(err)}`, isError: true };
       }
-      if (!tool) {
-        const text = `Unknown tool '${call.name}'.`;
-        emit({ type: "tool_result", id, name: call.name, isError: true, preview: text, neutralised: 0, durationMs: 0 });
-        out.push(new ToolMessage({ content: text, tool_call_id: id, name: call.name, status: "error" }));
-        continue;
-      }
+    });
 
-      const t0 = performance.now();
-      const result = await tracer.span(
-        `tool.${tool.name}`,
-        tool.name === "search_knowledge" ? "retrieval" : "tool",
-        async (h) => {
-          h.setAttributes({ origin: tool.origin, write: tool.write, args });
-          try {
-            const r = await tool.execute(args);
-            h.setAttributes({ isError: r.isError });
-            return r;
-          } catch (err) {
-            return { text: `Tool failed: ${err instanceof Error ? err.message : String(err)}`, isError: true } as const;
-          }
-        },
-      );
-      const wrapped = guardrails.wrapToolOutput(tool.name, result.text);
-      const durationMs = performance.now() - t0;
-      deps.metrics?.toolCalls.inc({ tool: tool.name, outcome: result.isError ? "error" : "ok" });
-      const sources = "sources" in result ? (result.sources ?? []) : [];
-      sourceBatch.push(...sources);
-      emit({
-        type: "tool_result",
-        id,
-        name: tool.name,
-        isError: result.isError,
-        preview: guardrails.redactOutput(wrapped.clean).text.slice(0, 1500),
-        neutralised: wrapped.neutralised,
-        durationMs,
-      });
-      out.push(
-        new ToolMessage({
-          content: wrapped.text,
-          tool_call_id: id,
-          name: tool.name,
-          status: result.isError ? "error" : "success",
-          artifact: sources,
-        }),
-      );
+  const runToolCall = async (call: ToolCall, rejected: string[], collectedSources: SourceRef[]): Promise<ToolMessage> => {
+    const id = call.id as string;
+    const args = (call.args ?? {}) as Record<string, unknown>;
+    const tool = toolsByName.get(call.name);
+    emit({ type: "tool_call", id, name: call.name, args, write: isWrite(call.name) });
+
+    if (rejected.includes(id)) {
+      deps.metrics?.toolCalls.inc({ tool: call.name, outcome: "rejected" });
+      return toolErrorMessage({ id, name: call.name }, "The human reviewer rejected this action. It was not executed.");
     }
-    if (sourceBatch.length) emit({ type: "sources", sources: sourceBatch });
-    return { messages: out, rejected: [] };
+    if (!tool) return toolErrorMessage({ id, name: call.name }, `Unknown tool '${call.name}'.`);
+
+    const startedAt = performance.now();
+    const result = await executeTool(tool, args);
+    // Everything a tool returns is untrusted: fence it for the model, redact it for the browser.
+    const wrapped = guardrails.wrapToolOutput(tool.name, result.text);
+    deps.metrics?.toolCalls.inc({ tool: tool.name, outcome: result.isError ? "error" : "ok" });
+    const sources = result.sources ?? [];
+    collectedSources.push(...sources);
+    emit({
+      type: "tool_result",
+      id,
+      name: tool.name,
+      isError: result.isError,
+      preview: guardrails.redactOutput(wrapped.clean).text.slice(0, PREVIEW_LIMIT),
+      neutralised: wrapped.neutralised,
+      durationMs: performance.now() - startedAt,
+    });
+    return new ToolMessage({
+      content: wrapped.text,
+      tool_call_id: id,
+      name: tool.name,
+      status: result.isError ? "error" : "success",
+      artifact: sources,
+    });
+  };
+
+  const tools = async (state: State): Promise<Partial<State>> => {
+    const messages: ToolMessage[] = [];
+    const sources: SourceRef[] = [];
+    for (const call of lastAi(state).tool_calls ?? []) {
+      messages.push(await runToolCall(call, state.rejected, sources));
+    }
+    if (sources.length) emit({ type: "sources", sources });
+    return { messages, rejected: [] };
   };
 
   const answer = async (state: State): Promise<Partial<State>> => {

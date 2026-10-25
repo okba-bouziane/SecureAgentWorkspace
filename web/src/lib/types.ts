@@ -95,3 +95,15 @@ export interface SpanRow {
   outputTokens: number;
   costUsd: number;
 }
+
+export interface ThreadRow {
+  id: string;
+  title: string;
+}
+
+export interface DeadLetterRow {
+  documentId: string;
+  title: string;
+  error: string;
+  attempts: number;
+}

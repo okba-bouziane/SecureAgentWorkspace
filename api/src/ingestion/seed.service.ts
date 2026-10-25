@@ -4,6 +4,7 @@ import { Inject, Injectable, Logger, type OnApplicationBootstrap } from "@nestjs
 import { CONFIG } from "../common/tokens.js";
 import type { Config } from "../config.js";
 import { IngestionService } from "./ingestion.service.js";
+import { errorMessage } from "../common/errors.js";
 
 /** Queues the bundled sample documents on startup. Idempotent thanks to the content hash. */
 @Injectable()
@@ -26,7 +27,7 @@ export class SeedService implements OnApplicationBootstrap {
         this.log.log(`seed ${file}: ${res.duplicate ? "already indexed" : "queued"}`);
       }
     } catch (err) {
-      this.log.warn(`Seeding skipped: ${err instanceof Error ? err.message : String(err)}`);
+      this.log.warn(`Seeding skipped: ${errorMessage(err)}`);
     }
   }
 }

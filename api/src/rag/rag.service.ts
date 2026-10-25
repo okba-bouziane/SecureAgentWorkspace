@@ -9,6 +9,9 @@ import { rerank } from "./rerank.js";
 import { reciprocalRankFusion } from "./rrf.js";
 import { toTsQuery } from "./text.js";
 
+const DEFAULT_RESULTS = 5;
+const DEFAULT_CANDIDATES = 20;
+
 export interface SearchHit {
   chunkId: number;
   documentId: string;
@@ -51,8 +54,8 @@ export class RagService {
 
   /** Hybrid search: Postgres full-text + pgvector, fused with RRF, then reranked. */
   async search(query: string, opts: SearchOptions = {}): Promise<SearchHit[]> {
-    const k = opts.k ?? 5;
-    const candidates = opts.candidates ?? 20;
+    const k = opts.k ?? DEFAULT_RESULTS;
+    const candidates = opts.candidates ?? DEFAULT_CANDIDATES;
     const stop = this.metrics.searchLatency.startTimer();
     try {
       return await this.tracer.span(
@@ -61,44 +64,14 @@ export class RagService {
         async (h) => {
           const [embedding] = await this.tracer.span("rag.embed_query", "embedding", () => this.embedder.embed([query]));
           if (!embedding) return [];
-          const tsQuery = toTsQuery(query);
 
           const [fts, vec] = await Promise.all([
-            this.tracer.span("rag.fulltext", "retrieval", () => this.fullText(tsQuery, candidates)),
+            this.tracer.span("rag.fulltext", "retrieval", () => this.fullText(toTsQuery(query), candidates)),
             this.tracer.span("rag.vector", "retrieval", () => this.vector(embedding, candidates)),
           ]);
-
-          const fused = reciprocalRankFusion([
-            { name: "fts", ids: fts.map((r) => Number(r.id)) },
-            { name: "vector", ids: vec.map((r) => Number(r.id)) },
-          ]);
-          const byId = new Map<number, Row>();
-          for (const r of [...vec, ...fts]) byId.set(Number(r.id), r);
-          const ftsScores = new Map(fts.map((r) => [Number(r.id), r.score]));
-          const vecScores = new Map(vec.map((r) => [Number(r.id), r.score]));
-
-          const items = fused.slice(0, candidates).flatMap((f) => {
-            const row = byId.get(f.id);
-            return row
-              ? [{ id: f.id, title: row.title, content: row.content, fusedScore: f.score, row, ranks: f.ranks }]
-              : [];
-          });
-          const top = rerank(query, items, k);
-          h.setAttributes({ query, ftsCandidates: fts.length, vectorCandidates: vec.length, returned: top.length });
-          return top.map(({ item, rerankScore }): SearchHit => ({
-            chunkId: item.id,
-            documentId: item.row.document_id,
-            title: item.row.title,
-            ordinal: item.row.ordinal,
-            content: item.row.content,
-            suspicious: item.row.suspicious,
-            ftsRank: item.ranks.fts ?? null,
-            vectorRank: item.ranks.vector ?? null,
-            ftsScore: ftsScores.get(item.id) ?? null,
-            vectorScore: vecScores.get(item.id) ?? null,
-            fusedScore: item.fusedScore,
-            rerankScore,
-          }));
+          const hits = fuseAndRerank(query, fts, vec, k, candidates);
+          h.setAttributes({ query, ftsCandidates: fts.length, vectorCandidates: vec.length, returned: hits.length });
+          return hits;
         },
         { k },
       );
@@ -134,4 +107,36 @@ export class RagService {
     );
     return rows;
   }
+}
+
+/** Merges the two ranked lists with Reciprocal Rank Fusion, then reorders the best candidates lexically. */
+function fuseAndRerank(query: string, fts: Row[], vec: Row[], k: number, candidates: number): SearchHit[] {
+  const fused = reciprocalRankFusion([
+    { name: "fts", ids: fts.map((r) => Number(r.id)) },
+    { name: "vector", ids: vec.map((r) => Number(r.id)) },
+  ]);
+  const rowById = new Map<number, Row>();
+  for (const r of [...vec, ...fts]) rowById.set(Number(r.id), r);
+  const ftsScores = new Map(fts.map((r) => [Number(r.id), r.score]));
+  const vecScores = new Map(vec.map((r) => [Number(r.id), r.score]));
+
+  const items = fused.slice(0, candidates).flatMap((f) => {
+    const row = rowById.get(f.id);
+    return row ? [{ id: f.id, title: row.title, content: row.content, fusedScore: f.score, row, ranks: f.ranks }] : [];
+  });
+
+  return rerank(query, items, k).map(({ item, rerankScore }) => ({
+    chunkId: item.id,
+    documentId: item.row.document_id,
+    title: item.row.title,
+    ordinal: item.row.ordinal,
+    content: item.row.content,
+    suspicious: item.row.suspicious,
+    ftsRank: item.ranks.fts ?? null,
+    vectorRank: item.ranks.vector ?? null,
+    ftsScore: ftsScores.get(item.id) ?? null,
+    vectorScore: vecScores.get(item.id) ?? null,
+    fusedScore: item.fusedScore,
+    rerankScore,
+  }));
 }

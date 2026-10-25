@@ -6,6 +6,7 @@ import type { AuthUser } from "../auth/jwt-verifier.js";
 import { RateLimitGuard } from "../ratelimit/rate-limit.guard.js";
 import { AgentService } from "./agent.service.js";
 import type { AgentEvent } from "./events.js";
+import { errorMessage } from "../common/errors.js";
 
 const messageSchema = z.object({ message: z.string().trim().min(1).max(4000) });
 const decisionSchema = z.object({ approved: z.boolean() });
@@ -75,7 +76,7 @@ export class ChatController {
       await run(lazyEmit);
     } catch (err) {
       if (emit || res.headersSent) {
-        (emit ?? openStream(res))({ type: "error", message: err instanceof Error ? err.message : "failed" });
+        (emit ?? openStream(res))({ type: "error", message: errorMessage(err) });
       } else if (err instanceof HttpException) {
         res.status(err.getStatus()).json(err.getResponse());
         return;

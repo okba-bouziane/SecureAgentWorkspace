@@ -1,6 +1,7 @@
 import { ChevronDown, ChevronRight, FileText, Hand, ShieldAlert, Wrench } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { renderMarkdown } from "../lib/markdown";
+import { Banner, Loading } from "./ui";
 import type { Step, Turn } from "../lib/turns";
 import type { SourceRef } from "../lib/types";
 
@@ -32,20 +33,18 @@ function StepRow({ step }: { step: Step }) {
   );
 }
 
-export function SourceCard({ s, highlighted }: { s: SourceRef; highlighted: boolean }) {
+function SourceCard({ s, elementId, highlighted }: { s: SourceRef; elementId: string; highlighted: boolean }) {
   return (
-    <div className={`source${highlighted ? " hl" : ""}`} id={`src-${s.tag}`}>
-      <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-        <span className="cite" style={{ cursor: "default" }}>
-          {s.tag.slice(1)}
-        </span>
-        <FileText size={13} className="muted" />
-        <b style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.title}</b>
+    <div className={`source${highlighted ? " hl" : ""}`} id={elementId}>
+      <div className="source-head">
+        <span className="cite static">{s.tag.slice(1)}</span>
+        <FileText size={13} className="muted" aria-hidden />
+        <b className="source-title">{s.title}</b>
       </div>
       <div className="snip">{s.snippet}</div>
       <div className="muted small">
         FTS #{s.ftsRank ?? "-"} - vector #{s.vectorRank ?? "-"} - fused {s.fusedScore.toFixed(4)}
-        {s.suspicious && <span className="badge err" style={{ marginLeft: 6 }}>flagged</span>}
+        {s.suspicious && <span className="badge err">flagged</span>}
       </div>
     </div>
   );
@@ -59,10 +58,18 @@ interface Props {
 
 export function TurnView({ turn, onDecision, busy }: Props) {
   const [hl, setHl] = useState<string | null>(null);
+  const clearHighlight = useRef<ReturnType<typeof setTimeout>>(undefined);
+  useEffect(() => () => clearTimeout(clearHighlight.current), []);
+
+  // Ids are per turn: two turns in one thread can cite the same chunk.
+  const sourceElementId = (tag: string) => `src-${turn.id}-${tag}`;
+
+  /** Clicking a [S12] badge in the answer scrolls to that source card and highlights it briefly. */
   const cite = (tag: string) => {
     setHl(tag);
-    document.getElementById(`src-${tag}`)?.scrollIntoView({ block: "nearest", behavior: "smooth" });
-    setTimeout(() => setHl(null), 2000);
+    document.getElementById(sourceElementId(tag))?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    clearTimeout(clearHighlight.current);
+    clearHighlight.current = setTimeout(() => setHl(null), 2000);
   };
   const cited = new Set([...(turn.answer ?? "").matchAll(/\[(S\d+)\]/g)].map((m) => m[1]));
   const sources = [...turn.sources].sort((a, b) => Number(cited.has(b.tag)) - Number(cited.has(a.tag)));
@@ -79,12 +86,10 @@ export function TurnView({ turn, onDecision, busy }: Props) {
       )}
       {sources.length > 0 && (
         <div>
-          <div className="muted small" style={{ marginBottom: 4 }}>
-            Retrieved sources
-          </div>
+          <div className="muted small section-label">Retrieved sources</div>
           <div className="sources">
             {sources.map((s) => (
-              <SourceCard key={s.tag} s={s} highlighted={hl === s.tag} />
+              <SourceCard key={s.tag} s={s} elementId={sourceElementId(s.tag)} highlighted={hl === s.tag} />
             ))}
           </div>
         </div>
@@ -100,7 +105,7 @@ export function TurnView({ turn, onDecision, busy }: Props) {
             </div>
           ))}
           <div className="muted small">The agent will call SecureMCP with your own access token. If your role is not allowed, SecureMCP will refuse.</div>
-          <div style={{ display: "flex", gap: 8 }}>
+          <div className="approval-actions">
             <button className="btn primary" disabled={busy} onClick={() => onDecision(true)}>
               Approve
             </button>
@@ -110,19 +115,19 @@ export function TurnView({ turn, onDecision, busy }: Props) {
           </div>
         </div>
       )}
-      {turn.warning && <div className="banner warn">{turn.warning}</div>}
+      {turn.warning && <Banner kind="warn">{turn.warning}</Banner>}
       {turn.answer && (
         <div className={`answer${turn.blocked ? " blocked" : ""}`}>
           {renderMarkdown(turn.answer, cite)}
           {turn.redactions && Object.keys(turn.redactions).length > 0 && (
-            <div className="muted small" style={{ marginTop: 6 }}>
+            <div className="muted small redactions">
               PII redacted: {Object.entries(turn.redactions).map(([k, v]) => `${v} ${k}`).join(", ")}
             </div>
           )}
         </div>
       )}
-      {turn.error && <div className="banner err">{turn.error}</div>}
-      {turn.running && !turn.approval && !turn.answer && <div className="muted small">Working...</div>}
+      {turn.error && <Banner kind="err">{turn.error}</Banner>}
+      {turn.running && !turn.approval && !turn.answer && <Loading label="Working" />}
     </div>
   );
 }

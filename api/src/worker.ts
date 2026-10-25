@@ -34,7 +34,7 @@ async function main(): Promise<void> {
   });
 
   // Small HTTP endpoint for Prometheus and Kubernetes probes.
-  const port = Number(process.env.WORKER_METRICS_PORT ?? 9101);
+  const port = cfg.WORKER_METRICS_PORT;
   const server = createServer((req, res) => {
     if (req.url === "/metrics") {
       void metrics.render().then((body) => {

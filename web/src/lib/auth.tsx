@@ -1,6 +1,8 @@
 import { UserManager, WebStorageStateStore, type User } from "oidc-client-ts";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { OIDC_AUTHORITY, OIDC_CLIENT_ID } from "./config";
+import { decodeJwt } from "./jwt";
+import { errorText } from "./errors";
 
 /** Authorization Code + PKCE against Keycloak. No client secret exists in this app. */
 export const userManager = new UserManager({
@@ -30,12 +32,6 @@ function toSession(user: User): Session {
     isAdmin: roles.includes("admin"),
     accessToken: user.access_token,
   };
-}
-
-export function decodeJwt(token: string): Record<string, unknown> {
-  const body = token.split(".")[1] ?? "";
-  const json = atob(body.replace(/-/g, "+").replace(/_/g, "/"));
-  return JSON.parse(decodeURIComponent(escape(json))) as Record<string, unknown>;
 }
 
 interface AuthState {
@@ -72,7 +68,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           apply(await userManager.getUser());
         }
       } catch (e) {
-        if (!cancelled) setError(e instanceof Error ? e.message : "Sign-in failed");
+        if (!cancelled) setError(errorText(e, "Sign-in failed"));
       } finally {
         if (!cancelled) setLoading(false);
       }

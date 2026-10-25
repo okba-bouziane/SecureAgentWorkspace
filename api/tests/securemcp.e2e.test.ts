@@ -5,7 +5,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync, mkdtempSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { exportJWK, generateKeyPair, SignJWT } from "jose";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildAgentGraph } from "../src/agent/graph.js";
@@ -21,7 +21,8 @@ import { aiCall, aiText, ScriptedChatModel } from "./helpers.js";
  * Runs the real SecureMCP server (path in SECUREMCP_PATH, already built) against a local JWKS,
  * so tokens, role checks and the audit log are the real thing. Only the chat model is scripted.
  */
-const path = process.env.SECUREMCP_PATH;
+// Resolved to an absolute path because the server is spawned with SecureMCP as its working directory.
+const path = process.env.SECUREMCP_PATH ? resolve(process.env.SECUREMCP_PATH) : "";
 const entry = path ? join(path, "dist", "index.js") : "";
 const enabled = Boolean(path && existsSync(entry));
 
