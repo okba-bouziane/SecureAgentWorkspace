@@ -189,7 +189,7 @@ npm run typecheck && npm run lint
 
 Without the env vars, the Postgres, Redis and SecureMCP tests are skipped and the rest still run.
 
-**Tests (90 in total, all passing in the last run).** API 80: auth (valid, expired, wrong audience/issuer, unknown key, missing header), guardrails, RRF/rerank/chunker/query building, the agent graph with a scripted fake model (read tools run directly, write tools interrupt, approve and resume, rejection, a viewer getting Forbidden, injection blocked, tool output neutralised, PII redacted, step limit, spans recorded), hybrid search on real Postgres + pgvector, BullMQ ingestion (idempotency, retry with backoff, dead-letter, re-queue), Redis rate limiter, approval surviving a restart with the Postgres checkpointer, the HTTP API (401, SSE stream, token forwarded to the tool, 409 while approval pending, thread isolation, 429 with `Retry-After`, admin-only upload, trace access) and an **end-to-end test that starts the real SecureMCP** with a local JWKS (role checks and audit log are the real ones). Web 10: stream-to-turn state and history restore, JWT claim decoding, number formatting and span-tree ordering.
+**Tests (93 in total, all passing in the last run).** API 83: citation normalisation, auth (valid, expired, wrong audience/issuer, unknown key, missing header), guardrails, RRF/rerank/chunker/query building, the agent graph with a scripted fake model (read tools run directly, write tools interrupt, approve and resume, rejection, a viewer getting Forbidden, injection blocked, tool output neutralised, PII redacted, step limit, spans recorded), hybrid search on real Postgres + pgvector, BullMQ ingestion (idempotency, retry with backoff, dead-letter, re-queue), Redis rate limiter, approval surviving a restart with the Postgres checkpointer, the HTTP API (401, SSE stream, token forwarded to the tool, 409 while approval pending, thread isolation, 429 with `Retry-After`, admin-only upload, trace access) and an **end-to-end test that starts the real SecureMCP** with a local JWKS (role checks and audit log are the real ones). Web 10: stream-to-turn state and history restore, JWT claim decoding, number formatting and span-tree ordering.
 
 **Evals** (`api/evals`, run in CI with thresholds): retrieval recall@3 and MRR over 18 questions with the real embedding model and Postgres; tool-routing gate (read tools run, writes and unknown tools wait for approval); prompt-injection detection and false positives; neutralising poisoned tool output; PII redaction.
 
@@ -204,6 +204,25 @@ Without the env vars, the Postgres, Redis and SecureMCP tests are skipped and th
 | PII samples redacted (4) | 1.00 | 1.00 |
 
 `npm run evals:live` (not in CI, needs a key) checks whether the real model picks the right tool: **7/7** with `openai/gpt-oss-20b` on Groq at the time of writing (7 cases; the eighth routing case is the unknown-tool gate above). The screenshots were also taken with that model, because the daily token quota of the larger default model was used up during development.
+
+**Answer quality** (`npm run evals:answers`, not in CI, needs a key and Postgres). 33 questions go through the real agent graph (guardrails, tool loop, hybrid search over the seed documents, output redaction): 22 single-document, 4 that need two documents, 2 about the poisoned supplier note and 5 the knowledge base cannot answer. A judge from a different model family (`qwen/qwen3.8-27b` on Groq) compares each answer with a written reference and with the passages the agent actually retrieved. Citations are checked in code: every `[S12]` tag must be a passage that was retrieved, and at least one must come from the expected document. Full per-question results are in `api/evals/results/`. The scoring code is tested in CI (`evals/answers.eval.ts`, including a run of the real graph with a scripted model).
+
+| Answer eval, `openai/gpt-oss-120b` | First run | After fixes | Threshold |
+| --- | --- | --- | --- |
+| Correctness vs reference (28 answerable, partial = 0.5) | 1.000 | 0.964 | 0.80 |
+| Faithful to retrieved passages (33) | 97% | 97% | 90% |
+| Cites an expected document (28) | 82% | 100% | 85% |
+| Made-up citation tags | 0 | 0 | 0 |
+| Says "not found" on unanswerable questions (5) | 100% | 100% | 80% |
+| Planted instruction followed | 0 | 0 | 0 |
+| Strict pass (all of the above for that question) | 82% | 94% | |
+| Latency p50 / p95 | 0.93 s / 14.74 s | 2.02 s / 7.36 s | |
+| Tokens per answer (in / out) | 1,276 / 194 | 1,354 / 201 | |
+| Cost per 1,000 answers | $0.31 | $0.32 | |
+
+The first run found real problems. gpt-oss writes citations as `【S12】` or wraps tags in zero-width spaces, so the UI showed them as plain text instead of source badges; the API now normalises them before the answer is sent (`src/agent/citations.ts`). Three answers cited nothing and one invented "chat or email" support channels; the system prompt now requires a tag after every fact taken from the knowledge base and forbids inventing contact details. After the change, the live tool-routing eval still scores 7/7 with the 120b model. The two remaining failures are model errors the judge caught: one answer opens with "Yes" and then says opened software cannot be returned, and one adds the supplier's keyboard rule to a webcam answer.
+
+Latency is measured from question to final answer in-process (no HTTP), and on Groq's free tier it includes waits after 429 rate-limit replies, which explains the p95. Cost uses the configured prices (`LLM_PRICE_IN_PER_M` 0.15 and `LLM_PRICE_OUT_PER_M` 0.60 USD per million tokens) and excludes the judge. The judge was spot-checked by hand and is lenient in places: it accepted an answer that borrowed the 5-business-day refund delay from the returns rule for a cancellation.
 
 These datasets are small and written by the author for this sample shop. They guard against regressions; they are not a benchmark. With a corpus of five documents, recall saturates, so the eval cannot show hybrid beating a single retriever.
 

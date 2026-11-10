@@ -18,6 +18,7 @@
     "test": "vitest run",
     "evals": "vitest run --config vitest.evals.config.ts",
     "evals:live": "tsx evals/live-routing.ts",
+    "evals:answers": "tsx evals/live-answers.ts",
     "prefetch-model": "tsx scripts/prefetch-model.ts"
   },
   "dependencies": {

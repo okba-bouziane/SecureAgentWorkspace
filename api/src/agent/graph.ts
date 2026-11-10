@@ -17,6 +17,7 @@ import type { MetricsService } from "../metrics/metrics.service.js";
 import { estimateTokens } from "../tracing/cost.js";
 import type { Tracer } from "../tracing/tracer.js";
 import { PREVIEW_LIMIT, type AgentEvent, type Emit, type PendingCall, type SourceRef } from "./events.js";
+import { normalizeCitations } from "./citations.js";
 import { BLOCKED_REPLY, SYSTEM_PROMPT } from "./prompt.js";
 import { toOpenAiTools, type AgentTool, type ToolOutcome } from "./tools.js";
 
@@ -210,7 +211,7 @@ export function buildAgentGraph(deps: GraphDeps) {
   const answer = async (state: State): Promise<Partial<State>> => {
     const last = lastAi(state);
     const redacted = await tracer.span("guardrail.output", "guardrail", async (h) => {
-      const r = guardrails.redactOutput(textOf(last));
+      const r = guardrails.redactOutput(normalizeCitations(textOf(last)));
       h.setAttributes({ redactions: r.redactions });
       return r;
     });
