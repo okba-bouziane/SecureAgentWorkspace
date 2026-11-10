@@ -1,5 +1,7 @@
 # Secure Agent Workspace
 
+[![CI](https://github.com/okba-bouziane/SecureAgentWorkspace/actions/workflows/ci.yml/badge.svg)](https://github.com/okba-bouziane/SecureAgentWorkspace/actions/workflows/ci.yml)
+
 A production-style agentic full-stack app. A React UI signs users in with Keycloak, a NestJS API runs a LangGraph.js agent, and the agent acts **with the signed-in user's own permissions**: it calls the SecureMCP server with that user's access token, so a `viewer` still gets `Forbidden` on writes even though an AI is driving. Write actions pause for human approval, knowledge questions use hybrid search (Postgres full-text + pgvector) with citations, and every run is traced.
 
 **Stack:** React + Vite + TypeScript · NestJS · LangGraph.js (Postgres checkpointer) · MCP client (Streamable HTTP) · Postgres + pgvector · Redis + BullMQ · Keycloak · local embeddings (`@huggingface/transformers`) · Prometheus · Docker Compose · Kubernetes manifests · Vitest
