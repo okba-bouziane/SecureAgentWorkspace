@@ -45,6 +45,32 @@
           }
         }
       ]
+    },
+    {
+      "clientId": "mcp-server",
+      "name": "SecureMCP console",
+      "description": "Public client used by the SecureMCP built-in console (http://localhost:3102) to sign in viewer/admin.",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": true,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": true,
+      "serviceAccountsEnabled": false,
+      "webOrigins": ["http://localhost:3102", "http://127.0.0.1:3102"],
+      "protocolMappers": [
+        {
+          "name": "mcp-server-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "mcp-server",
+            "id.token.claim": "false",
+            "access.token.claim": "true",
+            "introspection.token.claim": "true"
+          }
+        }
+      ]
     }
   ],
   "users": [
